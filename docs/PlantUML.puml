@@ -1,0 +1,67 @@
+' Projeto IoT Industrial — Grupo 3
+' Dois diagramas PlantUML independentes no mesmo arquivo
+
+' 1. Fluxo de ingestão de telemetria e thresholds
+@startuml
+title Fluxo de ingestao e avaliacao de telemetria - IoT industrial
+start
+:Capturar dados da CNC e da bancada de estanqueidade;
+:Enviar telemetria pelo gateway IoT;
+:Receber e validar identificacao, horario e valores;
+if (Dados validos?) then (Sim)
+  :Armazenar medicoes e rastreabilidade;
+  :Consultar limites, historico e criticidade;
+  if (Threshold ultrapassado?) then (Sim)
+    if (Persistente ou combinacao critica?) then (Sim)
+      if (Risco alto?) then (Sim)
+        :Classificar estado Critico;
+      else (Nao)
+        :Classificar estado Atencao;
+      endif
+      :Gerar alerta priorizado com evidencias;
+      :Notificar operador e tecnico;
+      :Validar ocorrencia e planejar intervencao;
+      :Registrar ou sincronizar manutencao no CMMS/ERP;
+    else (Nao)
+      :Registrar desvio isolado e acompanhar tendencia;
+    endif
+  else (Nao)
+    :Registrar condicao normal;
+  endif
+else (Nao)
+  :Registrar falha de sensor ou comunicacao;
+  :Notificar falha de monitoramento;
+endif
+:Atualizar historico e dashboard;
+stop
+@enduml
+
+' 2. Máquina de estados do equipamento
+@startuml
+title Ciclo de vida da maquina industrial
+hide empty description
+state "Normal" as Normal
+state "Atencao" as Atencao
+state "Critico" as Critico
+state "Em manutencao" as Manutencao
+state "Indisponivel" as Indisponivel
+
+[*] --> Normal
+Normal --> Atencao : Desvio persistente
+Atencao --> Critico : Limite critico ou sinais combinados
+Atencao --> Normal : Leituras estabilizadas
+Critico --> Atencao : Risco reduzido e monitorado
+Normal --> Manutencao : Preventiva programada
+Atencao --> Manutencao : Intervencao planejada
+Critico --> Manutencao : Intervencao urgente
+Normal --> Indisponivel : Parada inesperada
+Critico --> Indisponivel : Falha ou parada
+Indisponivel --> Manutencao : Reparo iniciado
+Manutencao --> Normal : Testes aprovados e liberacao
+Manutencao --> Indisponivel : Falha nao solucionada
+
+note right of Indisponivel
+  Indisponivel = maquina parada.
+  Falha de sensor gera alerta separado.
+end note
+@enduml
