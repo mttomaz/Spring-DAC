@@ -1,0 +1,78 @@
+# Projeto IoT Industrial — Grupo 3
+# Arquivo D2 unificado com dois diagramas independentes.
+# A raiz representa a ingestao e avaliacao de telemetria.
+# A camada "estados_equipamento" representa o ciclo de vida da maquina.
+# https://d2lang.com/tour/composition/
+
+# DIAGRAMA 1 — Fluxo de telemetria IoT e thresholds (quadro principal)
+direction: down
+cnc: "Sensores CNC: temperatura, vibracao e horas"
+bancada: "Bancada: pressao, ciclo e resultado"
+gateway: Gateway IoT
+receber: Receber telemetria
+validar: Validar identificacao, horario e valores
+valido: Dados validos? {shape: diamond}
+falha: Registrar falha de sensor ou comunicacao
+persistir: Salvar medicoes e rastreabilidade
+regras: Consultar limites, historico e criticidade
+limite: Threshold ultrapassado? {shape: diamond}
+persistente: Persistente ou combinacao critica? {shape: diamond}
+risco: Risco alto? {shape: diamond}
+normal: Condicao normal
+observar: Registrar desvio isolado
+atencao: Estado Atencao
+critico: Estado Critico
+alerta: Gerar alerta priorizado com evidencia
+notificar: Notificar operador e tecnico
+intervencao: Validar alerta e planejar manutencao
+cmms: Registrar intervencao no CMMS ou ERP
+painel: Atualizar historico e dashboard
+
+cnc -> gateway
+bancada -> gateway
+gateway -> receber -> validar -> valido
+valido -> falha: Nao
+falha -> notificar: Falha de monitoramento
+valido -> persistir: Sim
+persistir -> regras -> limite
+limite -> normal: Nao
+normal -> painel
+limite -> persistente: Sim
+persistente -> observar: Nao
+observar -> painel
+persistente -> risco: Sim
+risco -> atencao: Nao
+risco -> critico: Sim
+atencao -> alerta
+critico -> alerta
+alerta -> notificar -> intervencao -> cmms -> painel
+
+# DIAGRAMA 2 — Maquina de estados (camada independente)
+layers: {
+  estados_equipamento: {
+    direction: right
+    inicio: Inicio {shape: circle}
+    normal: Normal
+    atencao: Atencao
+    critico: Critico
+    manutencao: Em manutencao
+    indisponivel: Indisponivel
+
+    inicio -> normal
+    normal -> atencao: Desvio persistente
+    atencao -> critico: Limite critico ou sinais combinados
+    atencao -> normal: Leituras estabilizadas
+    critico -> atencao: Risco reduzido
+    normal -> manutencao: Preventiva programada
+    atencao -> manutencao: Intervencao planejada
+    critico -> manutencao: Intervencao urgente
+    normal -> indisponivel: Parada inesperada
+    critico -> indisponivel: Falha ou parada
+    indisponivel -> manutencao: Reparo iniciado
+    manutencao -> normal: Testes e liberacao
+    manutencao -> indisponivel: Falha nao solucionada
+
+    observacao: "Nota: falha de sensor e evento de monitoramento, nao prova maquina indisponivel"
+    observacao.style.stroke-dash: 3
+  }
+}
