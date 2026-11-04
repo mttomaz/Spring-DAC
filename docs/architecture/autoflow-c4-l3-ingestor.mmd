@@ -1,0 +1,31 @@
+C4Component
+    title AutoFlow Monitor - C4 L3 do Ingestor de Telemetria
+
+    ContainerQueue(mqtt, "Broker MQTT", "MQTT / TLS", "Recebe lotes do gateway industrial")
+
+    Container_Boundary(ingestor, "Ingestor de Telemetria - Python - mesmo processo") {
+        Component(consumer, "StreamConsumer", "Python / cliente MQTT", "Valida origem e payload; preserva horario, sequencia e qualidade")
+        Component(analyzer, "ThresholdAnalyzer", "Python / servico de dominio", "Aplica limites, persistencia, recuperacao e saude do monitoramento")
+        Component(publisher, "AlertPublisher", "Python / servico de aplicacao", "Registra ocorrencias e pendencias antes de solicitar notificacoes")
+        Component(scheduler, "MonitoringScheduler", "Python / rotina periodica", "Dispara verificacoes e reenvios periodicos")
+        Component(temporalRepo, "TelemetryRepository", "Python / adaptador InfluxDB", "Grava e consulta leituras, janelas e qualidade")
+        Component(relationalRepo, "OperationalRepositories", "Python / repositories PostgreSQL", "Isola contexto, politicas, estado, alertas e pendencias")
+    }
+
+    ContainerDb(influx, "Banco de series temporais", "InfluxDB", "Temperatura, RMS, pico, sinal de vida e qualidade por instante")
+    ContainerDb(postgres, "Banco relacional", "PostgreSQL", "Ativos, sensores, producao, politicas, alertas e intervencoes")
+    Container(notifications, "Servico de Notificacoes", "Python / API HTTPS", "Outro conteiner AutoFlow: integra Teams e e-mail")
+
+    Rel(mqtt, consumer, "Entrega lotes de telemetria", "MQTT / TLS")
+    Rel(consumer, relationalRepo, "Origem, contexto e checkpoints", "Chamada local")
+    Rel(consumer, temporalRepo, "Grava leituras e qualidade", "Chamada local")
+    Rel(consumer, analyzer, "Submete janelas validas", "Chamada local")
+    Rel(scheduler, analyzer, "Dispara verificacao periodica", "Chamada local")
+    Rel(scheduler, publisher, "Retoma pendencias de envio", "Chamada local")
+    Rel(analyzer, temporalRepo, "Consulta janelas e ultimas leituras", "Chamada local")
+    Rel(analyzer, relationalRepo, "Politicas, contexto e estado", "Chamada local")
+    Rel(analyzer, publisher, "Solicita abertura ou atualizacao", "Chamada local")
+    Rel(publisher, relationalRepo, "Persiste alerta e pendencia de envio", "Chamada local")
+    Rel(publisher, notifications, "Solicita envio e reenvio", "HTTPS / JSON")
+    Rel(temporalRepo, influx, "Le e grava series", "HTTPS / API InfluxDB")
+    Rel(relationalRepo, postgres, "Le e grava registros", "SQL / TLS")
