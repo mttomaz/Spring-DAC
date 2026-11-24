@@ -1,0 +1,87 @@
+classDiagram
+    direction LR
+
+    class StreamConsumer {
+        -TelemetryRepository temporalRepo
+        -OperationalRepositories relationalRepo
+        -ThresholdAnalyzer analyzer
+        +consumir_lote(lote)
+    }
+    class ThresholdAnalyzer {
+        -TelemetryRepository temporalRepo
+        -OperationalRepositories relationalRepo
+        -AlertPublisher publisher
+        +avaliar_janelas(contexto, janelas)
+        +verificar_comunicacao(agora)
+    }
+    class AlertPublisher {
+        -OperationalRepositories relationalRepo
+        -NotificationClient notificationClient
+        +registrar_ocorrencia(condicao)
+        +enviar_pendencias()
+    }
+    class MonitoringScheduler {
+        -ThresholdAnalyzer analyzer
+        -AlertPublisher publisher
+        +executar_verificacao(agora)
+        +executar_reenvios()
+    }
+
+    class TelemetryRepository {
+        <<interface>>
+        +gravar_janelas(janelas)
+        +consultar_janela(janela_id)
+        +ultima_leitura(sensor_id)
+    }
+    class OperationalRepositories {
+        <<interface>>
+        +consultar_contexto(lote)
+        +carregar_politica(contexto)
+        +salvar_estado(estado)
+        +salvar_checkpoint(lote_id, etapa)
+        +registrar_alerta_e_pendencia(alerta)
+        +listar_pendencias_abertas()
+        +registrar_tentativa(pendencia_id, canal)
+        +concluir_pendencia(pendencia_id)
+    }
+    class NotificationClient {
+        <<interface>>
+        +solicitar_envio(alerta_id, canais)
+    }
+
+    class InfluxTelemetryRepository {
+        Adaptador InfluxDB
+    }
+    class PostgresOperationalRepositories {
+        Adaptador PostgreSQL
+    }
+    class HttpNotificationClient {
+        Adaptador HTTPS para o Servico de Notificacoes
+    }
+    class InMemoryTelemetryRepository {
+        Substituto de teste
+    }
+    class InMemoryOperationalRepositories {
+        Substituto de teste
+    }
+    class FakeNotificationClient {
+        Substituto de teste
+    }
+
+    StreamConsumer ..> TelemetryRepository : usa
+    StreamConsumer ..> OperationalRepositories : usa
+    StreamConsumer ..> ThresholdAnalyzer : submete janelas
+    ThresholdAnalyzer ..> TelemetryRepository : usa
+    ThresholdAnalyzer ..> OperationalRepositories : usa
+    ThresholdAnalyzer ..> AlertPublisher : solicita alerta
+    AlertPublisher ..> OperationalRepositories : usa
+    AlertPublisher ..> NotificationClient : usa
+    MonitoringScheduler ..> ThresholdAnalyzer : dispara verificacao
+    MonitoringScheduler ..> AlertPublisher : dispara reenvios
+
+    TelemetryRepository <|.. InfluxTelemetryRepository
+    TelemetryRepository <|.. InMemoryTelemetryRepository
+    OperationalRepositories <|.. PostgresOperationalRepositories
+    OperationalRepositories <|.. InMemoryOperationalRepositories
+    NotificationClient <|.. HttpNotificationClient
+    NotificationClient <|.. FakeNotificationClient
