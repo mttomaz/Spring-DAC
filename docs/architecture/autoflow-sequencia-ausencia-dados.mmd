@@ -1,0 +1,37 @@
+sequenceDiagram
+    title Deteccao de ausencia de dados pelo MonitoringScheduler (sem novos lotes no broker)
+
+    box Ingestor de Telemetria
+        participant scheduler as MonitoringScheduler
+        participant analyzer as ThresholdAnalyzer
+        participant temporalRepo as TelemetryRepository
+        participant relationalRepo as OperationalRepositories
+        participant publisher as AlertPublisher
+    end
+    participant influx as Banco de series temporais
+    participant postgres as Banco relacional
+
+    scheduler->>analyzer: executar_verificacao(agora) e verificar_comunicacao(agora)
+    analyzer->>relationalRepo: carregar_politica(contexto) com o prazo maximo sem leitura
+    relationalRepo->>postgres: SQL / TLS
+    postgres-->>relationalRepo: politica
+    analyzer->>temporalRepo: ultima_leitura(sensor_id)
+    temporalRepo->>influx: consulta a ultima leitura (timeout 3 s)
+
+    alt leitura recente dentro do prazo da politica
+        influx-->>temporalRepo: leitura e horario de coleta
+        temporalRepo-->>analyzer: ultima leitura valida
+        analyzer->>relationalRepo: salvar_estado(estado) sem alteracao
+    else sem leitura alem do prazo da politica
+        influx-->>temporalRepo: leitura antiga ou ausente
+        temporalRepo-->>analyzer: ultima leitura fora do prazo
+        analyzer->>publisher: registrar_ocorrencia(falha de monitoramento: sem dados)
+        publisher->>relationalRepo: registrar_alerta_e_pendencia(alerta)
+        relationalRepo->>postgres: transacao unica grava alerta e pendencia de envio
+        Note over analyzer,publisher: Ausencia de dados nao e tratada como condicao normal nem como maquina indisponivel
+    else InfluxDB demora mais de 3 s
+        temporalRepo--xinflux: timeout de 3 s, cancela a chamada
+        temporalRepo-->>analyzer: TelemetryTimeout
+        analyzer->>relationalRepo: salvar_estado(estado indeterminado)
+        Note over scheduler,analyzer: A verificacao e repetida no proximo ciclo do scheduler
+    end
