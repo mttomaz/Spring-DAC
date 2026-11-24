@@ -1,0 +1,51 @@
+sequenceDiagram
+    title Alerta com servico de e-mail indisponivel e reenvio assincrono de pendencias
+
+    box Ingestor de Telemetria
+        participant analyzer as ThresholdAnalyzer
+        participant publisher as AlertPublisher
+        participant scheduler as MonitoringScheduler
+        participant relationalRepo as OperationalRepositories
+    end
+    participant postgres as Banco relacional
+    participant notifications as Servico de Notificacoes
+    participant teams as Microsoft Teams
+    participant email as Servico de e-mail
+
+    analyzer->>publisher: registrar_ocorrencia(condicao)
+    publisher->>relationalRepo: registrar_alerta_e_pendencia(alerta)
+    relationalRepo->>postgres: transacao unica grava alerta e pendencia de envio
+    postgres-->>relationalRepo: commit
+    relationalRepo-->>publisher: alerta_id e pendencia registrados
+
+    publisher->>notifications: solicitar_envio(alerta_id, canais) via HTTPS / JSON, timeout curto
+    notifications->>teams: envia aviso
+    teams-->>notifications: entregue
+    notifications->>email: envia aviso
+
+    alt e-mail entrega o aviso
+        email-->>notifications: aceito
+        notifications-->>publisher: todos os canais entregues
+        publisher->>relationalRepo: concluir_pendencia(pendencia_id)
+    else servico de e-mail indisponivel
+        email--xnotifications: erro ou timeout
+        notifications-->>publisher: entrega parcial (Teams ok, e-mail pendente)
+        publisher->>relationalRepo: registrar_tentativa(pendencia_id, "email"): pendencia do canal e-mail mantida
+        Note over publisher,postgres: O alerta e a pendencia continuam gravados e visiveis no dashboard
+
+        loop executar_reenvios() do MonitoringScheduler a cada intervalo, com espera crescente
+            scheduler->>publisher: enviar_pendencias()
+            publisher->>relationalRepo: listar_pendencias_abertas()
+            publisher->>notifications: solicitar_envio(alerta_id, canais pendentes) com o mesmo alerta_id
+            alt e-mail recuperado
+                notifications->>email: envia aviso
+                email-->>notifications: aceito
+                notifications-->>publisher: entregue
+                publisher->>relationalRepo: concluir_pendencia(pendencia_id)
+            else ainda indisponivel
+                notifications-->>publisher: falha mantida
+                publisher->>relationalRepo: registrar_tentativa(pendencia_id, "email"): pendencia mantida
+                Note over notifications: Escalonamento da pendencia conforme politica do Servico de Notificacoes
+            end
+        end
+    end

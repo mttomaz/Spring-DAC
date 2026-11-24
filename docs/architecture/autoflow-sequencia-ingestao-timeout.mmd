@@ -1,0 +1,43 @@
+sequenceDiagram
+    title Ingestao de lote com banco lento (timeout de 3 s) e reentrega pelo broker
+
+    participant mqtt as Broker MQTT
+    box Ingestor de Telemetria
+        participant consumer as StreamConsumer
+        participant temporalRepo as TelemetryRepository
+        participant analyzer as ThresholdAnalyzer
+        participant relationalRepo as OperationalRepositories
+    end
+    participant influx as Banco de series temporais
+    participant postgres as Banco relacional
+
+    mqtt->>consumer: consumir_lote(lote) via MQTT QoS 1
+    consumer->>relationalRepo: consultar_contexto(lote) e salvar_checkpoint(lote_id, "recebido")
+    relationalRepo->>postgres: SQL / TLS
+    postgres-->>relationalRepo: contexto e checkpoint gravados
+    consumer->>temporalRepo: gravar_janelas(janelas validas)
+    temporalRepo->>influx: grava series (timeout 3 s)
+
+    alt InfluxDB responde em ate 3 s
+        influx-->>temporalRepo: gravacao confirmada
+        temporalRepo-->>consumer: janelas persistidas
+        consumer->>relationalRepo: salvar_checkpoint(lote_id, "telemetria persistida")
+        consumer->>analyzer: avaliar_janelas(contexto, janelas)
+        analyzer->>relationalRepo: carregar_politica() e salvar_estado()
+        consumer-->>mqtt: confirma lote (ACK)
+    else InfluxDB demora mais de 3 s
+        temporalRepo--xinflux: timeout de 3 s, cancela a chamada
+        temporalRepo-->>consumer: TelemetryTimeout
+        consumer->>relationalRepo: salvar_checkpoint(lote_id, "falha de armazenamento")
+        Note over consumer,mqtt: Lote NAO confirmado ao broker e sem etapa "telemetria persistida"
+        mqtt--)consumer: reentrega assincrona do lote (QoS 1, intervalo crescente)
+        consumer->>temporalRepo: gravar_janelas(mesmo lote, mesmos evento_id e janela_id)
+        alt janela ja gravada ou gravacao conclui na nova tentativa
+            temporalRepo-->>consumer: janelas persistidas sem duplicar
+            consumer->>analyzer: avaliar_janelas(contexto, janelas)
+            consumer-->>mqtt: confirma lote (ACK)
+        else tentativas esgotadas pela politica
+            consumer->>relationalRepo: salvar_checkpoint(lote_id, "elegivel a reprocessamento")
+            Note over consumer,postgres: Falha do armazenamento e tratada como falha de monitoramento, nunca como condicao normal
+        end
+    end
