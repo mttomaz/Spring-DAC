@@ -1,0 +1,39 @@
+C4Container
+    title AutoFlow Monitor - C4 L2 de Conteineres
+
+    Person(operador, "Operador", "Acompanha a condicao da maquina no turno")
+    Person(tecnico, "Tecnico de manutencao", "Valida alertas e conduz intervencoes")
+    Person(gestor, "Gestor", "Consulta indicadores e criticidade")
+    Person(qualidade, "Analista da qualidade", "Consulta resultados da bancada de estanqueidade")
+
+    System_Ext(gateway, "Gateway industrial", "Aquisicao da CNC, dos sensores e da bancada; calcula indicadores por janela")
+    System_Ext(cmms, "CMMS/ERP", "Registra ordens e intervencoes de manutencao")
+    System_Ext(teams, "Microsoft Teams", "Canal de aviso a equipe")
+    System_Ext(email, "Servico de e-mail", "Canal de aviso a equipe")
+
+    System_Boundary(autoflow, "AutoFlow Monitor") {
+        ContainerQueue(mqtt, "Broker MQTT", "MQTT / TLS", "Recebe lotes do gateway e retem mensagens ate a confirmacao do ingestor")
+        Container(ingestor, "Ingestor de Telemetria", "Python - mesmo processo", "Valida lotes, avalia thresholds, registra alertas e retoma pendencias de envio")
+        ContainerDb(influx, "Banco de series temporais", "InfluxDB", "Temperatura, RMS, pico, sinal de vida e qualidade por instante")
+        ContainerDb(postgres, "Banco relacional", "PostgreSQL", "Ativos, sensores, producao, politicas, checkpoints, alertas, pendencias e intervencoes")
+        Container(notifications, "Servico de Notificacoes", "Python / API HTTPS", "Integra Teams e e-mail, aplica retentativa e escalonamento")
+        Container(api, "API de Consulta", "Python / API HTTPS", "Expoe estado, historico, alertas e resultados somente para leitura")
+        Container(dashboard, "Dashboard", "Aplicacao web", "Exibe estado dos ativos, tendencias, historico e ocorrencias")
+    }
+
+    Rel(gateway, mqtt, "Publica lotes de telemetria", "MQTT / TLS")
+    Rel(mqtt, ingestor, "Entrega lotes de telemetria", "MQTT / TLS")
+    Rel(ingestor, influx, "Le e grava series", "HTTPS / API InfluxDB")
+    Rel(ingestor, postgres, "Le e grava registros, checkpoints, alertas e pendencias", "SQL / TLS")
+    Rel(ingestor, notifications, "Solicita envio e reenvio", "HTTPS / JSON")
+    Rel(notifications, teams, "Envia aviso", "HTTPS")
+    Rel(notifications, email, "Envia aviso", "HTTPS / SMTP")
+
+    Rel(operador, dashboard, "Consulta estado das maquinas", "HTTPS")
+    Rel(tecnico, dashboard, "Valida ocorrencias e intervencoes", "HTTPS")
+    Rel(gestor, dashboard, "Consulta indicadores", "HTTPS")
+    Rel(qualidade, dashboard, "Consulta resultados da bancada", "HTTPS")
+    Rel(dashboard, api, "Consulta dados e valida ocorrencias", "HTTPS / JSON")
+    Rel(api, influx, "Le series e tendencias", "HTTPS / API InfluxDB")
+    Rel(api, postgres, "Le estado e historico, registra validacao", "SQL / TLS")
+    Rel(api, cmms, "Sincroniza intervencao validada", "HTTPS / JSON")
